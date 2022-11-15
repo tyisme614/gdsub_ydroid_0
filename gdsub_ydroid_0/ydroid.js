@@ -7,6 +7,8 @@ const nodemailer = require('nodemailer');
 const {google} = require('googleapis');
 const youtube = google.youtube('v3');
 
+
+//resource folders
 const download_dir = __dirname + '/downloads/';
 const srt_dir = __dirname + '/srt_files/';
 const output_dir = __dirname + '/outputs/';
@@ -70,6 +72,8 @@ const pattern_chinese_symbol = /[，|。|、|？|！|￥|（|）|【|】|？|“
 const lang_en = 'en';
 const lang_cn = 'cn';
 
+const TARGET_PLAYLIST = 'PLOU2XLYxmsII8REpkzsy1bJHj6G1WEVA1';
+
 /**
  *
  *
@@ -80,7 +84,7 @@ const lang_cn = 'cn';
  *
  */
 
-let auth_key = __dirname + '/sample_auth_key.json';
+let auth_key = __dirname + '/auth_key.json';
 let YOUTUBE_API_KEY;
 let GMAIL_API_KEY;
 var blocks_en = [];
@@ -92,6 +96,7 @@ let ts = new Date();
 console.log(ts + ': checker started...');
 setInterval(checkPlaylist, 3600000);
 
+checkPlaylist();
 
 /**
  *
@@ -318,8 +323,8 @@ function checkPlaylist(){
         }
         let raw = JSON.parse(data);
         YOUTUBE_API_KEY = raw.youtube_apikey;
-        GMAIL_API_KEY = raw.gmail_apikey;
-        loadYoutube('PLOU2XLYxmsII8REpkzsy1bJHj6G1WEVA1');
+        GMAIL_API_KEY = raw.gmail_appkey;
+        loadYoutube(TARGET_PLAYLIST);
     });
 }
 
@@ -339,7 +344,7 @@ function loadYoutube(playlistID){
                 let pd = new Date(video.publish_date)
                 let diff = d - pd;
                 let gap = diff/3600000.0;
-                if(gap <= 1.5){
+                if(gap <= 12){
                     retrieveYoutubeCCCaption(video.id, 'en');
                 }else{
                     let ts = new Date();
@@ -388,6 +393,7 @@ async function translateText(text, lang) {
  * @param callback
  */
 function retrieveYoutubeCCCaption(videoid, lang){
+    console.log('downloading caption from youtube of video ' + videoid + ' target language is ' + lang);
     let url = 'https://www.youtube.com/watch?v=' + videoid;
     let option_lang = lang;
     if(lang == 'en'){
@@ -410,44 +416,46 @@ function retrieveYoutubeCCCaption(videoid, lang){
     }
 
     youtubedl.getSubs(url, options, function(err, files) {
-        if (err) console.error(err.toString());
-        if(files.length > 0){
-            let f = files[0];
-            console.log('rename downloaded subtitle file -->' + f);
-            let newName = f.replace(/\(|\)|\'|\s+|-/g, '');
-            console.log('new file name -->' + newName);
-            fs.renameSync(download_dir + f, download_dir + newName);
-            let output_file = download_dir + newName + '.2.srt';
-            fs.access(output_file, (err) => {
-                if (!err) {
-                    console.log('output file exists, remove it');
-                    fs.unlinkSync(output_file);
-                }
-                let process = new ffmpeg(download_dir + newName);
-                process.then((srtFile) => {
-                    console.log('file is ready to be processed, file-->' + download_dir + newName);
-                    console.log('candidate -->' + srtFile);
-                    srtFile.save(download_dir + newName + '.2.srt', (err, output_file) => {
-                        console.log('srt file saved. output-->' + output_file);
-                        if(err){
-                            console.error(err.toString());
-
-                        }else{
-                            let target = download_dir + newName + '.2.srt';
-
-                            traverse(target, option_lang, videoid, (t) => {
-                                let blocks = t.blocks;
-                                let output_file = output_dir + videoid + '.' + option_lang + '.srt';
-                                generateMonolingualSubtitle(blocks, output_file, videoid);
-                            });
-                        }
-                    });
-                });
-
-            });//end of fs.access
-
+        if (err){
+            console.error(err.toString());
         }else{
-            console.log('unable to download target file from remote server.');
+            if(typeof(files) != 'undefined' && files.length > 0){
+                let f = files[0];
+                console.log('rename downloaded subtitle file -->' + f);
+                let newName = f.replace(/\(|\)|\'|\s+|-/g, '');
+                console.log('new file name -->' + newName);
+                fs.renameSync(download_dir + f, download_dir + newName);
+                let output_file = download_dir + newName + '.2.srt';
+                fs.access(output_file, (err) => {
+                    if (!err) {
+                        console.log('output file exists, remove it');
+                        fs.unlinkSync(output_file);
+                    }
+                    let process = new ffmpeg(download_dir + newName);
+                    process.then((srtFile) => {
+                        console.log('file is ready to be processed, file-->' + download_dir + newName);
+                        console.log('candidate -->' + srtFile);
+                        srtFile.save(download_dir + newName + '.2.srt', (err, output_file) => {
+                            console.log('srt file saved. output-->' + output_file);
+                            if(err){
+                                console.error(err.toString());
+
+                            }else{
+                                let target = download_dir + newName + '.2.srt';
+                                traverse(target, option_lang, videoid, (t) => {
+                                    let blocks = t.blocks;
+                                    let output_file = output_dir + videoid + '.' + option_lang + '.srt';
+                                    generateMonolingualSubtitle(blocks, output_file, videoid);
+                                });
+                            }
+                        });
+                    });
+
+                });//end of fs.access
+
+            }else{
+                console.log('unable to download target file from remote server.');
+            }
         }
 
     });
