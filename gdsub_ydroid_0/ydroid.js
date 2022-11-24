@@ -494,7 +494,9 @@ let traverse = function(file, lang, videoid, callback){
 
         if(isInfoLine(line)){
             console.log('this string is info line');
-
+            //get last block
+            let block = blocks[len - 1];
+            block.subtitle = line;
         }else{
             if(linecount == 0){//in srt files, the first line is always the number line
                 if(line != ''){
