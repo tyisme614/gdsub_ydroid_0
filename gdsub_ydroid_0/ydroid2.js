@@ -33,6 +33,7 @@ stateEmitter.on(event_subtitle_downloaded, (files, videoid)=>{
     console.log('converting file-->' + files[0]);
     convertVTT2SRT(download_dir, files, 0, srt_dir, videoid);
 
+
 });
 
 stateEmitter.on(event_subtitle_converted, (index, files, token) =>{
@@ -86,28 +87,13 @@ var blocks_en = [];
 var sentences = [];
 var sentence_count = 0;
 sentences.push('');
-let target_video = '';
+let task_id = '';
 let retry_download = false;
 
-let arg = process.argv[2];
-if(typeof(arg) == 'undefined'){
-    let ts = new Date();
-    console.log(ts + ': checker started...');
-    setInterval(checkPlaylist, 3600000);
-}else{
-    fs.readFile(auth_key, function(err, data){
-        if(err) {
-            console.log(err);
-        }
-        let raw = JSON.parse(data);
-        YOUTUBE_API_KEY = raw.youtube_apikey;
-        GMAIL_API_KEY = raw.gmail_apikey;
-        let target = arg;
 
-        retrieveYoutubeCCCaption(target, 'en');
-    });
-}
-
+let ts = new Date();
+console.log(ts + ': start processing...');
+main(__dirname + '/target.srt');
 
 /**
  *
@@ -117,6 +103,32 @@ if(typeof(arg) == 'undefined'){
  *
  *
  */
+function main(target){
+    fs.readFile(auth_key, function(err, data){
+        if(err) {
+            console.log(err);
+        }
+        let raw = JSON.parse(data);
+        YOUTUBE_API_KEY = raw.youtube_apikey;
+        GMAIL_API_KEY = raw.gmail_apikey;
+        processSRT(target);
+    });
+}
+
+function processSRT(file){
+    let ts = Date.now();
+    let lang = 'en';
+    let filename = ts + '.' + lang + '.srt';
+    task_id = ts;
+    traverse(file, 'en', ts, (t) => {
+        let blocks = t.blocks;
+        let output_file = output_dir + filename;
+        generateMonolingualSubtitle(blocks, output_file, ts);
+    });
+}
+
+
+
 function traverseEnglish(srt){
     var linecount = 0;
     var blockcount = 0;
@@ -206,7 +218,7 @@ function traverseEnglish(srt){
                 content += (s + '\n');
             }
             console.log('translating subtitle...');
-            translateText(content, 'zh-CN', srt);
+            translateText(content, 'zh-CN');
         });
 }
 
@@ -272,7 +284,7 @@ function showBlock(block){
 
 function sendMail(receiver, subject, content, attatchment){
 
-    console.log('attachment-->' + attatchment);
+
     const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
@@ -287,7 +299,6 @@ function sendMail(receiver, subject, content, attatchment){
         subject: subject,
         text: content,
         attatchment:{
-            filename: 'english.srt',
             path: attatchment
         }
     };
@@ -302,81 +313,6 @@ function sendMail(receiver, subject, content, attatchment){
     });
 }
 
-
-//parse response data from youtube
-function parseYoutubeData(raw){
-    // console.log('raw-->' + JSON.stringify(raw));
-    var kind = raw.kind;
-    console.log('kind:' + kind);
-    var etag = raw.etag;
-    console.log('etag:' + etag);
-    var pageInfo = raw.pageInfo;
-    console.log('pageInfo: totalResults=' + pageInfo.totalResults + "  resultsPerPage=" + pageInfo.resultsPerPage);
-    var items = raw.items;
-    let item = items[0];
-    let video = {};
-    video.id = item.snippet.resourceId.videoId;
-    video.title = item.snippet.title;
-    video.description = item.snippet.description;
-    video.position = item.snippet.position;
-    video.publish_date = item.snippet.publishedAt;
-    video.privacyStatus = item.status.privacyStatus;
-
-    console.log('video.id=' + video.id + '  video.title=' + video.title + ' video.position=' + video.position + ' video.publish_date=' + video.publish_date + ' video.privacyStatus=' + video.privacyStatus);
-
-    return video;
-
-}
-
-function checkPlaylist(){
-    let ts = new Date();
-    console.log(ts + ':checking playlist');
-
-    fs.readFile(auth_key, function(err, data){
-        if(err) {
-            console.log(err);
-        }
-        let raw = JSON.parse(data);
-        YOUTUBE_API_KEY = raw.youtube_apikey;
-        GMAIL_API_KEY = raw.gmail_apikey;
-        loadYoutube('PLOU2XLYxmsII8REpkzsy1bJHj6G1WEVA1');
-    });
-}
-
-function loadYoutube(playlistID){
-    youtube.playlistItems.list({
-            key:YOUTUBE_API_KEY,
-            playlistId: playlistID,
-            part: 'snippet,contentDetails,status',
-            maxResults: 3},
-        function(err, res){
-            if(err){
-                console.log(err);
-            }else{
-                //start parsing youtube data
-                let video = parseYoutubeData(res.data, playlistID);
-                let d = new Date();
-                let pd = new Date(video.publish_date)
-                let diff = d - pd;
-                let gap = diff/3600000.0;
-                if(gap <= 1.9 || retry_download){
-                    let target = video.id;
-                    if(retry_download){
-                        target = target_video;
-                    }
-                    target_video = video.id;
-                    retrieveYoutubeCCCaption(target, 'en');
-                }else{
-                    let ts = new Date();
-                    console.error(ts + ': time span is ' + gap + '\nno new episode found.');
-                }
-
-            }//end of playlist list method
-
-        });
-}
-
-
 // Imports the Google Cloud client library
 const {Translate} = require('@google-cloud/translate').v2;
 
@@ -390,7 +326,7 @@ const translate = new Translate({projectID});
 // const text = 'The text to translate, e.g. Hello, world!';
 // const target = 'The target language, e.g. ru';
 
-async function translateText(text, lang, srt) {
+async function translateText(text, lang) {
     // Translates the text into the target language. "text" can be a string for
     // translating a single piece of text, or an array of strings for translating
     // multiple texts.
@@ -403,85 +339,10 @@ async function translateText(text, lang, srt) {
         content += (translation + '\n');
     });
 
-    // let file = output_dir + videoid + '.en.srt';
-    sendMail('yuan@gdsub.com, yuant614@gmail.com', 'found new episode of TLDR -- ' + target_video, content, srt);
+    let file = output_dir + task_id + '.en.srt';
+    sendMail('yuan@gdsub.com, yuant614@gmail.com', 'Temporary Task', content, file);
 
 }
-
-/**
- * download cc caption from youtube
- * @param videoid
- * @param callback
- */
-function retrieveYoutubeCCCaption(videoid, lang){
-    let url = 'https://www.youtube.com/watch?v=' + videoid;
-    let option_lang = lang;
-    if(lang == 'en'){
-        lang = 'en,en-US';
-    }else if(lang == 'cn'){
-        lang = 'zh-Hans,zh-CN';
-    }
-    const options = {
-        // Write automatic subtitle file (youtube only)
-        auto: false,
-        // Downloads all the available subtitles.
-        all: false,
-        // Subtitle format. YouTube generated subtitles
-        // are available ttml or vtt.
-        format: 'vtt',
-        // Languages of subtitles to download, separated by commas.
-        lang: lang,
-        // The directory to save the downloaded files in.
-        cwd: download_dir,
-    }
-
-    youtubedl.getSubs(url, options, function(err, files) {
-        if (err) console.error(err.toString());
-        if(files.length > 0){
-            retry_download = false;
-            let f = files[0];
-            console.log('rename downloaded subtitle file -->' + f);
-            let newName = f.replace(/\(|\)|\'|\s+|-/g, '');
-            console.log('new file name -->' + newName);
-            fs.renameSync(download_dir + f, download_dir + newName);
-            let output_file = download_dir + newName + '.2.srt';
-            fs.access(output_file, (err) => {
-                if (!err) {
-                    console.log('output file exists, remove it');
-                    fs.unlinkSync(output_file);
-                }
-                let process = new ffmpeg(download_dir + newName);
-                process.then((srtFile) => {
-                    console.log('file is ready to be processed, file-->' + download_dir + newName);
-                    console.log('candidate -->' + srtFile);
-                    srtFile.save(download_dir + newName + '.2.srt', (err, output_file) => {
-                        console.log('srt file saved. output-->' + output_file);
-                        if(err){
-                            console.error(err.toString());
-
-                        }else{
-                            let target = download_dir + newName + '.2.srt';
-
-                            traverse(target, option_lang, videoid, (t) => {
-                                let blocks = t.blocks;
-                                let output_file = output_dir + videoid + '.' + option_lang + '.srt';
-                                generateMonolingualSubtitle(blocks, output_file, videoid);
-                            });
-                        }
-                    });
-                });
-
-            });//end of fs.access
-
-        }else{
-            console.log('unable to download target file from remote server. retry later...');
-            target_video = videoid;
-            retry_download = true;
-        }
-
-    });
-}
-
 
 
 let traverse = function(file, lang, videoid, callback){
@@ -512,10 +373,8 @@ let traverse = function(file, lang, videoid, callback){
         if(isInfoLine(line)){
             console.log('this string is info line');
             //get last block
-            let len = blocks.length;
             let block = blocks[len - 1];
             block.subtitle = line;
-            linecount++;
         }else{
             if(linecount == 0){//in srt files, the first line is always the number line
                 if(line != ''){
@@ -858,80 +717,6 @@ function doFinalProcess(file_pri, file_sec, output, lang_pri ,token){
 }
 
 
-/**
- *
- *
- *
- *
- *
- * ************************************   sample data  **************************************************************
- *
- *
- *
- *
- */
-
-/**
- *
- *
- *
- *
- * {"config":
- * 	{"url":"https://youtube.googleapis.com/youtube/v3/playlistItems?key=&playlistId=PLOU2XLYxmsII8REpkzsy1bJHj6G1WEVA1&part=snippet%2CcontentDetails%2Cstatus&maxResults=2",
- * 	"method":"GET",
- * 	"userAgentDirectives":
- * 		[{"product":"google-api-nodejs-client","version":"6.0.3","comment":"gzip"}],
- * 	"headers":
- * 		{"x-goog-api-client":"gdcl/6.0.3 gl-node/16.17.0 auth/8.6.0","Accept-Encoding":"gzip",
- * 		"User-Agent":"google-api-nodejs-client/6.0.3 (gzip)","Accept":"application/json"},
- * 	"params":{"key":"",
- * 		"playlistId":"PLOU2XLYxmsII8REpkzsy1bJHj6G1WEVA1",
- * 		"part":"snippet,contentDetails,status","maxResults":2},
- * 		"retry":true,
- * 		"responseType":"json"},
- * 	"data":{"kind":"youtube#playlistItemListResponse","etag":"zbgwZE2tizhXvtEloWgPu_OafDg","nextPageToken":"EAAaBlBUOkNBSQ",
- * 			"items":
- * 				[
- * 					{"kind":"youtube#playlistItem","etag":"FcJ-BBhBH2-FPUhj_-AF_xiyoLY",
- * 					"id":"UExPVTJYTFl4bXNJSThSRXBrenN5MWJKSGo2RzFXRVZBMS5BOUNEMEI0OUY1OEEwQzdC",
- * 					"snippet":{"publishedAt":"2022-10-13T19:01:13Z","channelId":"UC_x5XG1OV2P6uZZ5FSM9Ttw",
- * 					"title":"Google Cloud Next 2022, Dart partnership with GitHub, and more dev news!",
- * 					"description":"TL;DR 315 | The Google Developer News Show\n\n
- * 									0:00 - Introduction\n
- * 									0:10 - Partnering with GitHub on supply
- * 								       	chain security for Dart packages → https://goo.gle/3EKj2Fs \n
- * 								    0:32 - Google Cloud Next 2022 → https://goo.gle/3EKiXSa \n
- * 								    0:46 - CircularNet: Reducing waste with Machine Learning → https://goo.gle/3CUjr7g \n
- * 								    1:20 - Kick Start Round G → https://goo.gle/3ET648P \n
- * 								    1:51 -  Don’t forget to like, comment, and subscribe!\n \n
- * 								            Here to bring you the latest developer news from across Google is Rody from Developer Relations.
- * 								            Tune in every week for a new episode, and let us know what you think of the latest announcements
- * 								            in the comments below.\n\nFollow Google Developers on Instagram → https://goo.gle/googledevs             \n\n
- * 								            Watch more #DevShow → https://goo.gle/GDevShow               \n
- * 								            Subscribe to Google Developers → https://goo.gle/developers \n\n
- * 								            #Google #Developers",
- * 			            "thumbnails":{"default":{"url":"https://i.ytimg.com/vi/Ay5O5H9MAlI/default.jpg","width":120,"height":90},
- * 			            "medium":{"url":"https://i.ytimg.com/vi/Ay5O5H9MAlI/mqdefault.jpg","width":320,"height":180},
- * 			            "high":{"url":"https://i.ytimg.com/vi/Ay5O5H9MAlI/hqdefault.jpg","width":480,"height":360},
- * 			            "standard":{"url":"https://i.ytimg.com/vi/Ay5O5H9MAlI/sddefault.jpg","width":640,"height":480},
- * 			            "maxres":{"url":"https://i.ytimg.com/vi/Ay5O5H9MAlI/maxresdefault.jpg","width":1280,"height":720}
- * 			          },
- * 			          "channelTitle":"Google Developers",
- * 			          "playlistId":"PLOU2XLYxmsII8REpkzsy1bJHj6G1WEVA1",
- * 			          "position":0,
- * 			          "resourceId":{"kind":"youtube#video","videoId":"Ay5O5H9MAlI"},
- * 			          "videoOwnerChannelTitle":"Google Developers",
- * 			          "videoOwnerChannelId":"UC_x5XG1OV2P6uZZ5FSM9Ttw"},
- * 			          "contentDetails":{"videoId":"Ay5O5H9MAlI","videoPublishedAt":"2022-10-13T21:00:05Z"},
- * 			          "status":{"privacyStatus":"public"}
- *     }]}}
- *
- *
- *
- *
- *
- *
- */
 
 
 
