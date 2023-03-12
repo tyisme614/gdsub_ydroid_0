@@ -82,9 +82,11 @@ const lang_cn = 'cn';
 let auth_key = __dirname + '/auth_key.json';
 let YOUTUBE_API_KEY;
 let GMAIL_API_KEY;
-var blocks_en = [];
-var sentences = [];
-var sentence_count = 0;
+let blocks_en = [];
+let sentences = [];
+let translation_cache = [];
+let blocks_sentences = new Map();
+let sentence_count = 0;
 sentences.push('');
 let target_video = '';
 let retry_download = false;
@@ -103,7 +105,7 @@ if(typeof(arg) == 'undefined'){
         YOUTUBE_API_KEY = raw.youtube_apikey;
         GMAIL_API_KEY = raw.gmail_apikey;
         let target = arg;
-
+        target_video = arg;
         retrieveYoutubeCCCaption(target, 'en');
     });
 }
@@ -120,6 +122,7 @@ if(typeof(arg) == 'undefined'){
 function traverseEnglish(srt){
     var linecount = 0;
     var blockcount = 0;
+    let lineNum = 1;
     console.log('traversing english subtitle...\n' + __dirname + '/' + srt);
     var rl_en = readline(srt);
     rl_en.on('line', function(line, lineCount, byteCount) {
@@ -134,12 +137,25 @@ function traverseEnglish(srt){
              * subtitle
              */
             var block = [];
+            block.line_number = lineNum++;
             block.start_time = 0;
             block.end_time = 0;
             block.timestamp = '';
             block.subtitle = '';
-            blocks_en.push(block);
+            block.sentence_index = sentences.length - 1;
+            let block_s = blocks_sentences.get(block.sentence_index);
+            if(typeof(block_s) == 'undefined'){
+                block_s = {};
+                block_s.start_time = 0;
+                block_s.end_time = 0;
+                block_s.elements = 1;
+                block_s.index = block.sentence_index;
+            }else{
+                block_s.elements++;
 
+            }
+            blocks_sentences.set(block.sentence_index, block_s);
+            blocks_en.push(block);
             linecount++;
         }else if(linecount == 1){
             // console.log('timestamp:' + line);
@@ -150,6 +166,13 @@ function traverseEnglish(srt){
             block.end_time = convertTS2TM(end_time);
             block.timestamp = line;
             linecount++;
+
+            let block_s = blocks_sentences.get(sentences.length);
+            if(block_s.elements == 1){
+                block_s.start_time = block.start_time;
+            }
+            block_s.end_time = block.end_time;
+            blocks_sentences.set(sentences.length, block_s);
         }else{
             if(line != ''){
                 // console.log('subtitle line:'+ line);
@@ -197,16 +220,38 @@ function traverseEnglish(srt){
             blockcount = 0;
             linecount = 0;
 
-            let content = '';
-            for(let i=0; i<sentences.length; i++){
-                // let b = blocks_en[i];
-                // showBlock(b);
-                let s = sentences[i];
-                console.log(s);
-                content += (s + '\n');
-            }
+            // let content = '';
+            // for(let i=0; i<sentences.length; i++){
+            //     // let b = blocks_en[i];
+            //     // showBlock(b);
+            //     let s = sentences[i];
+            //     console.log(s);
+            //     content += (s + '\n');
+            // }
             console.log('translating subtitle...');
-            translateText(content, 'zh-CN', srt);
+            translateText(sentences, 'zh-CN', srt).then(translations => {
+                    translation_cache = translations;
+                    let last_pos = 0;
+                    for(let i=0; i<blocks_en.length; i++){
+                        let b = blocks_en[i];
+                        showBlock(b);
+                        let sentence = blocks_sentences.get(b.sentence_index);
+                        showSentenceBlock(sentence);
+                        let ret = convertBlockToBilingualSubtitle(b, last_pos);
+                        console.log('last_pos-->' + ret.last_pos);
+                        console.log('chinese-->' + ret.chinese);
+                        console.log(ret.str);
+
+                        last_pos = ret.last_pos;
+
+                    }
+                    // for(let i=0; i<translations.length; i++){
+                    //     console.log('No.' + i
+                    //         + '\ntranslation:' + translations[i]
+                    //         + '\nword count:' + translations[i].length);
+                    // }
+                }
+            );
         });
 }
 
@@ -266,13 +311,16 @@ function convertTM2TS(tm){
 }
 
 function showBlock(block){
-    console.log('timestamp:' + block.timestamp + ' start_time=' + block.start_time + ' end_time=' + block.end_time + ' subtitle=' + block.subtitle);
+    console.log('timestamp:' + block.timestamp + ' start_time=' + block.start_time + ' end_time=' + block.end_time + ' subtitle=' + block.subtitle + ' sentence_index=' + block.sentence_index);
 }
 
+function showSentenceBlock(block){
+    console.log('index:' + block.index + ' start_time=' + block.start_time + ' end_time=' + block.end_time + ' elements:' + block.elements);
+}
 
-function sendMail(receiver, subject, content, attatchment){
+function sendMail(receiver, subject, content, attachment){
 
-    console.log('attachment-->' + attatchment);
+    console.log('attachment-->' + attachment);
     const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
@@ -286,9 +334,9 @@ function sendMail(receiver, subject, content, attatchment){
         to: receiver,
         subject: subject,
         text: content,
-        attatchment:{
+        attachment:{
             filename: 'english.srt',
-            path: attatchment
+            path: attachment
         }
     };
 
@@ -403,8 +451,9 @@ async function translateText(text, lang, srt) {
         content += (translation + '\n');
     });
 
+    return translations;
     // let file = output_dir + videoid + '.en.srt';
-    sendMail('yuan@gdsub.com, yuant614@gmail.com', 'found new episode of TLDR -- ' + target_video, content, srt);
+    // sendMail('yuan@gdsub.com, yuant614@gmail.com', 'found new episode of TLDR -- ' + target_video, content, srt);
 
 }
 
@@ -417,7 +466,7 @@ function retrieveYoutubeCCCaption(videoid, lang){
     let url = 'https://www.youtube.com/watch?v=' + videoid;
     let option_lang = lang;
     if(lang == 'en'){
-        lang = 'en,en-US';
+        lang = 'en,en-US,en-j3PyPqV-e1s';
     }else if(lang == 'cn'){
         lang = 'zh-Hans,zh-CN';
     }
@@ -657,6 +706,42 @@ let convertBlockToMonoSubtitle = (block) => {
     return str;
 
 };
+
+let convertBlockToBilingualSubtitle = (block, last_pos) =>{
+    let index = block.sentence_index;
+    let translation = '[no translation]';
+    let l_pos;
+    let chinese;
+    if(index < translation_cache.length){
+        let block_s = blocks_sentences.get(index);
+        chinese = translation_cache[block.sentence_index];
+        let len = (block.end_time - block.start_time)/(block_s.end_time - block_s.start_time)*chinese.length;
+        if(last_pos == 0){
+            translation = chinese.substring(0, len);
+            l_pos = len;
+        }else if(block_s.end_time == block.end_time){
+            translation = chinese.substring(last_pos, chinese.length);
+            l_pos = 0;
+        }else{
+            translation = chinese.substring(last_pos, chinese.length - len);
+            l_pos = chinese.length - len;
+        }
+
+    }
+
+    let str = block.line_number + '\n'
+        + block.timestamp + '\n'
+        + translation + '\n'
+        + block.subtitle + '\n'
+        + '\n';
+
+    let ret = {};
+    ret.str = str;
+    ret.last_pos = l_pos;
+    ret.chinese = chinese;
+    return ret;
+
+}
 
 //check string if it is info line
 function isInfoLine(str){
