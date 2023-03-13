@@ -6,6 +6,8 @@ const nodemailer = require('nodemailer');
 //google APIs
 const {google} = require('googleapis');
 const youtube = google.youtube('v3');
+//mixed-chinese-english tokenizer
+const meact = require('mixed-english-and-chinese-tokenizer');
 
 const download_dir = __dirname + '/downloads/';
 const srt_dir = __dirname + '/srt_files/';
@@ -85,11 +87,13 @@ let GMAIL_API_KEY;
 let blocks_en = [];
 let sentences = [];
 let translation_cache = [];
+let tokenized_translation = [];
 let blocks_sentences = new Map();
 let sentence_count = 0;
 sentences.push('');
 let target_video = '';
 let retry_download = false;
+let m_tokenizer = new meact();
 
 let arg = process.argv[2];
 if(typeof(arg) == 'undefined'){
@@ -167,12 +171,12 @@ function traverseEnglish(srt){
             block.timestamp = line;
             linecount++;
 
-            let block_s = blocks_sentences.get(sentences.length);
+            let block_s = blocks_sentences.get(block.sentence_index);
             if(block_s.elements == 1){
                 block_s.start_time = block.start_time;
             }
             block_s.end_time = block.end_time;
-            blocks_sentences.set(sentences.length, block_s);
+            blocks_sentences.set(block.sentence_index, block_s);
         }else{
             if(line != ''){
                 // console.log('subtitle line:'+ line);
@@ -229,22 +233,25 @@ function traverseEnglish(srt){
             //     content += (s + '\n');
             // }
             console.log('translating subtitle...');
-            translateText(sentences, 'zh-CN', srt).then(translations => {
+            translateText(sentences, 'zh-CN', srt).then(async translations => {
                     translation_cache = translations;
-                    let last_pos = 0;
-                    for(let i=0; i<blocks_en.length; i++){
-                        let b = blocks_en[i];
-                        showBlock(b);
-                        let sentence = blocks_sentences.get(b.sentence_index);
-                        showSentenceBlock(sentence);
-                        let ret = convertBlockToBilingualSubtitle(b, last_pos);
-                        console.log('last_pos-->' + ret.last_pos);
-                        console.log('chinese-->' + ret.chinese);
-                        console.log(ret.str);
+                    tokenizeTranslation(translations).then(()=>{
+                        let last_pos = 0;
+                        for (let i = 0; i < blocks_en.length; i++) {
+                            let b = blocks_en[i];
+                            showBlock(b);
+                            let sentence = blocks_sentences.get(b.sentence_index);
+                            showSentenceBlock(sentence);
+                            let ret = convertBlockToBilingualSubtitle(b, last_pos);
+                            console.log('last_pos-->' + ret.last_pos);
+                            console.log('chinese-->' + ret.chinese);
+                            console.log(ret.str);
 
-                        last_pos = ret.last_pos;
+                            last_pos = ret.last_pos;
 
-                    }
+                        }
+                    });
+
                     // for(let i=0; i<translations.length; i++){
                     //     console.log('No.' + i
                     //         + '\ntranslation:' + translations[i]
@@ -712,18 +719,35 @@ let convertBlockToBilingualSubtitle = (block, last_pos) =>{
     let translation = '[no translation]';
     let l_pos;
     let chinese;
-    if(index < translation_cache.length){
+    if(index < tokenized_translation.length){
         let block_s = blocks_sentences.get(index);
-        chinese = translation_cache[block.sentence_index];
-        let len = (block.end_time - block.start_time)/(block_s.end_time - block_s.start_time)*chinese.length;
+        chinese = tokenized_translation[block.sentence_index];
+        console.log('tokenized chinese:' + chinese);
+        let len = Math.round((block.end_time - block.start_time)/(block_s.end_time - block_s.start_time)*chinese.length);
+        console.log('len-->' + len + ' last_pos-->' + last_pos + ' total_len-->' + chinese.length);
         if(last_pos == 0){
-            translation = chinese.substring(0, len);
+            let index = 0;
+            translation = '';
+            while(index < len){
+                translation += chinese[index++];
+            }
+            // translation = chinese.substring(0, len);
             l_pos = len;
         }else if(block_s.end_time == block.end_time){
-            translation = chinese.substring(last_pos, chinese.length);
+            let index = last_pos;
+            translation = '';
+            while(index < chinese.length){
+                translation += chinese[index++];
+            }
+            // translation = chinese.substring(last_pos, chinese.length);
             l_pos = 0;
-        }else{
-            translation = chinese.substring(last_pos, chinese.length - len);
+        }else if(block.start_time > block_s.start_time && block.end_time < block_s.end_time){
+            let index = last_pos;
+            translation = '';
+            while(index < (chinese.length - len)){
+                translation += chinese[index++];
+            }
+            // translation = chinese.substring(last_pos, chinese.length - len);
             l_pos = chinese.length - len;
         }
 
@@ -743,6 +767,13 @@ let convertBlockToBilingualSubtitle = (block, last_pos) =>{
 
 }
 
+async function tokenizeTranslation(translations){
+    for (let i = 0; i < translations.length; i++) {
+        let token_arr = await m_tokenizer.tokenize(translations[i]);
+        tokenized_translation.push(token_arr);
+    }
+
+}
 //check string if it is info line
 function isInfoLine(str){
     let firstChar = str.substring(0, 1);
