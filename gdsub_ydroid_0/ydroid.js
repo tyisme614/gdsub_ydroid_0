@@ -725,31 +725,42 @@ let convertBlockToBilingualSubtitle = (block, last_pos) =>{
         console.log('tokenized chinese:' + chinese);
         let len = Math.round((block.end_time - block.start_time)/(block_s.end_time - block_s.start_time)*chinese.length);
         console.log('len-->' + len + ' last_pos-->' + last_pos + ' total_len-->' + chinese.length);
-        if(last_pos == 0){
+        if(block.start_time == block_s.start_time && block.end_time == block_s.end_time){
             let index = 0;
-            translation = '';
-            while(index < len){
-                translation += chinese[index++];
-            }
-            // translation = chinese.substring(0, len);
-            l_pos = len;
-        }else if(block_s.end_time == block.end_time){
-            let index = last_pos;
             translation = '';
             while(index < chinese.length){
                 translation += chinese[index++];
             }
             // translation = chinese.substring(last_pos, chinese.length);
             l_pos = 0;
-        }else if(block.start_time > block_s.start_time && block.end_time < block_s.end_time){
-            let index = last_pos;
-            translation = '';
-            while(index < (chinese.length - len)){
-                translation += chinese[index++];
+        }else{
+            if(last_pos == 0){
+                let index = 0;
+                translation = '';
+                while(index < len){
+                    translation += chinese[index++];
+                }
+                // translation = chinese.substring(0, len);
+                l_pos = len;
+            }else if(block_s.end_time == block.end_time){
+                let index = last_pos;
+                translation = '';
+                while(index < chinese.length){
+                    translation += chinese[index++];
+                }
+                // translation = chinese.substring(last_pos, chinese.length);
+                l_pos = 0;
+            }else if(block.start_time > block_s.start_time && block.end_time < block_s.end_time){
+                let index = last_pos;
+                translation = '';
+                while(index < (chinese.length - len)){
+                    translation += chinese[index++];
+                }
+                // translation = chinese.substring(last_pos, chinese.length - len);
+                l_pos = chinese.length - len;
             }
-            // translation = chinese.substring(last_pos, chinese.length - len);
-            l_pos = chinese.length - len;
         }
+
 
     }
 
