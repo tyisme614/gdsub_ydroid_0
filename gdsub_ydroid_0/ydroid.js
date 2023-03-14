@@ -93,7 +93,7 @@ let sentence_count = 0;
 sentences.push('');
 let target_video = '';
 let retry_download = false;
-let m_tokenizer = new meact();
+let m_tokenizer = new meact({simplified:true});
 
 let arg = process.argv[2];
 if(typeof(arg) == 'undefined'){
@@ -236,20 +236,32 @@ function traverseEnglish(srt){
             translateText(sentences, 'zh-CN', srt).then(async translations => {
                     translation_cache = translations;
                     tokenizeTranslation(translations).then(()=>{
-                        let last_pos = 0;
-                        for (let i = 0; i < blocks_en.length; i++) {
-                            let b = blocks_en[i];
-                            showBlock(b);
-                            let sentence = blocks_sentences.get(b.sentence_index);
-                            showSentenceBlock(sentence);
-                            let ret = convertBlockToBilingualSubtitle(b, last_pos);
-                            console.log('last_pos-->' + ret.last_pos);
-                            console.log('chinese-->' + ret.chinese);
-                            console.log(ret.str);
+                        let targetFile = output_dir + target_video + '.zh_en.srt';
+                        fs.access(targetFile, (err) => {
+                            if(!err){
+                                console.log('file exists, remove it');
+                                fs.unlinkSync(targetFile);
+                            }
 
-                            last_pos = ret.last_pos;
+                            console.log('traversing subtitle blocks');
 
-                        }
+                            let last_pos = 0;
+                            for (let i = 0; i < blocks_en.length; i++) {
+                                let b = blocks_en[i];
+                                // showBlock(b);
+                                let sentence = blocks_sentences.get(b.sentence_index);
+                                // showSentenceBlock(sentence);
+                                let ret = convertBlockToBilingualSubtitle(b, last_pos);
+                                // console.log('last_pos-->' + ret.last_pos);
+                                // console.log('chinese-->' + ret.chinese);
+                                // console.log(ret.str);
+                                fs.appendFileSync(targetFile, ret.str);
+                                last_pos = ret.last_pos;
+                            }
+                            let content = 'Please check the attachment for auto-generated bilingual subtitle.\nBest Wishes from GDSub Team.'
+                            sendMail('yuan@gdsub.com, yuant614@gmail.com', 'found new episode of TLDR -- ' + target_video, content, targetFile);
+                        });
+
                     });
 
                     // for(let i=0; i<translations.length; i++){
@@ -341,10 +353,9 @@ function sendMail(receiver, subject, content, attachment){
         to: receiver,
         subject: subject,
         text: content,
-        attachment:{
-            filename: 'english.srt',
+        attachments:[{
             path: attachment
-        }
+        }]
     };
 
     transporter.sendMail(mailOptions, function(error, info){
@@ -722,9 +733,9 @@ let convertBlockToBilingualSubtitle = (block, last_pos) =>{
     if(index < tokenized_translation.length){
         let block_s = blocks_sentences.get(index);
         chinese = tokenized_translation[block.sentence_index];
-        console.log('tokenized chinese:' + chinese);
+        // console.log('tokenized chinese:' + chinese);
         let len = Math.round((block.end_time - block.start_time)/(block_s.end_time - block_s.start_time)*chinese.length);
-        console.log('len-->' + len + ' last_pos-->' + last_pos + ' total_len-->' + chinese.length);
+        // console.log('len-->' + len + ' last_pos-->' + last_pos + ' total_len-->' + chinese.length);
         if(block.start_time == block_s.start_time && block.end_time == block_s.end_time){
             let index = 0;
             translation = '';
@@ -753,7 +764,9 @@ let convertBlockToBilingualSubtitle = (block, last_pos) =>{
             }else if(block.start_time > block_s.start_time && block.end_time < block_s.end_time){
                 let index = last_pos;
                 translation = '';
-                while(index < (chinese.length - len)){
+                let max = (last_pos + len) <= chinese.length? (last_pos + len):chinese.length;
+
+                while(index < max){
                     translation += chinese[index++];
                 }
                 // translation = chinese.substring(last_pos, chinese.length - len);
