@@ -97,9 +97,7 @@ let m_tokenizer = new meact({simplified:true});
 
 let arg = process.argv[2];
 if(typeof(arg) == 'undefined'){
-    let ts = new Date();
-    console.log(ts + ': checker started...');
-    setInterval(checkPlaylist, 21600000);//refresh playlist per 6 hours
+    console.error('no file is specified.')
 }else{
     fs.readFile(auth_key, function(err, data){
         if(err) {
@@ -109,8 +107,7 @@ if(typeof(arg) == 'undefined'){
         YOUTUBE_API_KEY = raw.youtube_apikey;
         GMAIL_API_KEY = raw.gmail_apikey;
         let target = arg;
-        target_video = arg;
-        retrieveYoutubeCCCaption(target, 'en');
+        traverseEnglish(target);
     });
 }
 
@@ -425,26 +422,16 @@ function loadYoutube(playlistID){
                 let pd = new Date(video.publish_date)
                 let diff = d - pd;
                 let gap = diff/3600000.0;
-                let ts = new Date();
-                console.log(ts + ':gap=' + gap + ' retry_download=' + retry_download);
-                if(video.privacyStatus == 'public' && (gap <= 6 || retry_download)){
+                if(gap <= 1.9 || retry_download){
                     let target = video.id;
                     if(retry_download){
                         target = target_video;
                     }
                     target_video = video.id;
                     retrieveYoutubeCCCaption(target, 'en');
-                }else if(video.privacyStatus == 'private') {
-
-                    console.log(ts + ':video ' + video.id + ' is private, retry downloading later...');
-                    if (!retry_download) {
-                        retry_download = true;
-                        target_video = video.id;
-                    }
                 }else{
-
                     let ts = new Date();
-                    console.error(ts + ': time span is ' + gap + ' and retry_download is ' + retry_download + '\nno new episode found.');
+                    console.error(ts + ': time span is ' + gap + '\nno new episode found.');
                 }
 
             }//end of playlist list method
