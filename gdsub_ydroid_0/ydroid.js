@@ -71,6 +71,10 @@ const pattern_chinese_symbol = /[，|。|、|？|！|￥|（|）|【|】|？|“
 const lang_en = 'en';
 const lang_cn = 'cn';
 
+const TIME_GAP = 6;//IN HOURS
+const CHECK_INTERVAL = 21600000; //IN MILLISECONDS
+
+
 /**
  *
  *
@@ -99,7 +103,7 @@ let arg = process.argv[2];
 if(typeof(arg) == 'undefined'){
     let ts = new Date();
     console.log(ts + ': checker started...');
-    setInterval(checkPlaylist, 21600000);//refresh playlist per 6 hours
+    setInterval(checkPlaylist, CHECK_INTERVAL);//refresh playlist per 6 hours
 }else{
     fs.readFile(auth_key, function(err, data){
         if(err) {
@@ -427,7 +431,7 @@ function loadYoutube(playlistID){
                 let gap = diff/3600000.0;
                 let ts = new Date();
                 console.log(ts + ':gap=' + gap + ' retry_download=' + retry_download);
-                if(video.privacyStatus == 'public' && (gap <= 6 || retry_download)){
+                if(video.privacyStatus == 'public' && (gap <= TIME_GAP || retry_download)){
                     let target = video.id;
                     if(retry_download){
                         target = target_video;
