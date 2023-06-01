@@ -250,6 +250,11 @@ function traverseEnglish(srt){
                             console.log('traversing subtitle blocks');
 
                             let last_pos = 0;
+                            let full_text = '';
+                            for(let i=0; i<translations.length; i++){
+                                full_text += translations[i];
+                            }
+
                             for (let i = 0; i < blocks_en.length; i++) {
                                 let b = blocks_en[i];
                                 // showBlock(b);
@@ -259,10 +264,11 @@ function traverseEnglish(srt){
                                 // console.log('last_pos-->' + ret.last_pos);
                                 // console.log('chinese-->' + ret.chinese);
                                 // console.log(ret.str);
+                                full_text += ret.translation;
                                 fs.appendFileSync(targetFile, ret.str);
                                 last_pos = ret.last_pos;
                             }
-                            let content = 'Please check the attachment for auto-generated bilingual subtitle.\nBest Wishes from GDSub Team.'
+                            let content = 'Please check the attachment for auto-generated bilingual subtitle.\nFulltext:\n\n' + full_text + '\n\nBest Wishes from GDSub Team.'
                             sendMail('yuan@gdsub.com, yuant614@gmail.com', 'found new episode of TLDR -- ' + target_video, content, targetFile);
                         });
 
@@ -805,6 +811,7 @@ let convertBlockToBilingualSubtitle = (block, last_pos) =>{
     ret.str = str;
     ret.last_pos = l_pos;
     ret.chinese = chinese;
+    ret.translation = translation;
     return ret;
 
 }
