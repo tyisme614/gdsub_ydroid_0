@@ -251,6 +251,7 @@ function traverseEnglish(srt){
 
                             let last_pos = 0;
                             let full_text = '';
+                            let original_english = '';
                             for(let i=0; i<translations.length; i++){
                                 full_text += translations[i];
                             }
@@ -264,11 +265,13 @@ function traverseEnglish(srt){
                                 // console.log('last_pos-->' + ret.last_pos);
                                 // console.log('chinese-->' + ret.chinese);
                                 // console.log(ret.str);
-                                full_text += ret.translation;
                                 fs.appendFileSync(targetFile, ret.str);
                                 last_pos = ret.last_pos;
+                                original_english += sentence;
                             }
-                            let content = 'Please check the attachment for auto-generated bilingual subtitle.\nFulltext:\n\n' + full_text + '\n\nBest Wishes from GDSub Team.'
+                            let content = 'Please check the attachment for auto-generated bilingual subtitle.\nFulltext:\n\n' + full_text
+                                + '\n\nOriginal English:\n' + original_english
+                                + '\n\nBest Wishes from GDSub Team.'
                             sendMail('yuan@gdsub.com, yuant614@gmail.com', 'found new episode of TLDR -- ' + target_video, content, targetFile);
                         });
 
@@ -757,7 +760,7 @@ let convertBlockToBilingualSubtitle = (block, last_pos) =>{
     if(index < tokenized_translation.length){
         let block_s = blocks_sentences.get(index);
         chinese = tokenized_translation[block.sentence_index];
-        // console.log('tokenized chinese:' + chinese);
+        console.log('tokenized chinese:' + chinese + ' last_pos=' + last_pos);
         let len = Math.round((block.end_time - block.start_time)/(block_s.end_time - block_s.start_time)*chinese.length);
         // console.log('len-->' + len + ' last_pos-->' + last_pos + ' total_len-->' + chinese.length);
         if(block.start_time == block_s.start_time && block.end_time == block_s.end_time){
