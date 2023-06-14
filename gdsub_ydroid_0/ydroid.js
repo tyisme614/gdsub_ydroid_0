@@ -252,14 +252,20 @@ function traverseEnglish(srt){
                             let last_pos = 0;
                             let full_text = '';
                             let original_english = '';
-                            for(let i=0; i<translations.length; i++){
-                                full_text += translations[i];
+                            let total_loop = Math.max(translations.length, sentences.length);
+                            for(let i=0; i<total_loop; i++){
+                                if(i < translations.length){
+                                    full_text += translations[i];
+                                }
+                                if(i < sentences.length){
+                                    original_english += sentences[i];
+                                }
                             }
 
                             for (let i = 0; i < blocks_en.length; i++) {
                                 let b = blocks_en[i];
                                 // showBlock(b);
-                                let sentence = blocks_sentences.get(b.sentence_index);
+                                // let sentence = blocks_sentences.get(b.sentence_index);
                                 // showSentenceBlock(sentence);
                                 let ret = convertBlockToBilingualSubtitle(b, last_pos);
                                 // console.log('last_pos-->' + ret.last_pos);
@@ -267,7 +273,7 @@ function traverseEnglish(srt){
                                 // console.log(ret.str);
                                 fs.appendFileSync(targetFile, ret.str);
                                 last_pos = ret.last_pos;
-                                original_english += sentence;
+
                             }
                             let content = 'Please check the attachment for auto-generated bilingual subtitle.\nFulltext:\n\n' + full_text
                                 + '\n\nOriginal English:\n' + original_english
