@@ -128,6 +128,15 @@ if(typeof(arg) == 'undefined'){
  *
  */
 function traverseEnglish(srt){
+
+    blocks_en = [];
+    sentences = [];
+    translation_cache = [];
+    tokenized_translation = [];
+    blocks_sentences = new Map();
+    sentence_count = 0;
+    sentences.push('');
+
     var linecount = 0;
     var blockcount = 0;
     let lineNum = 1;
